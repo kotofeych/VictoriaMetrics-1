@@ -242,6 +242,7 @@ var (
 	scrapesOK           = metrics.NewCounter(`vm_promscrape_scrapes_total{status_code="200"}`)
 	scrapesGunzipped    = metrics.NewCounter(`vm_promscrape_scrapes_gunziped_total`)
 	scrapesGunzipFailed = metrics.NewCounter(`vm_promscrape_scrapes_gunzip_failed_total`)
+	scrapeRetries       = metrics.NewCounter(`vm_promscrape_scrapes_retries_total`)
 )
 
 func doRequestWithPossibleRetry(hc *fasthttp.HostClient, req *fasthttp.Request, resp *fasthttp.Response, deadline time.Time) error {
@@ -255,6 +256,8 @@ func doRequestWithPossibleRetry(hc *fasthttp.HostClient, req *fasthttp.Request, 
 		if err != fasthttp.ErrConnectionClosed {
 			return err
 		}
+		scrapeRetries.Inc()
+		logger.Errorf("retries connections to host: %s", hc.Addr)
 		// Retry request if the server closes the keep-alive connection unless deadline exceeds.
 		if time.Since(deadline) >= 0 {
 			return fmt.Errorf("the server closes all the connection attempts: %w", err)
