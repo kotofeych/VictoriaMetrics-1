@@ -132,6 +132,30 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 	}
+	if strings.HasPrefix(path, "/prometheus/api/v1/label/") {
+		s := r.URL.Path[len("/prometheus/api/v1/label/"):]
+		if strings.HasSuffix(s, "/values") {
+			labelValuesRequests.Inc()
+			labelName := s[:len(s)-len("/values")]
+			httpserver.EnableCORS(w, r)
+			if err := prometheus.LabelValuesHandler(startTime, labelName, w, r); err != nil {
+				labelValuesErrors.Inc()
+				sendPrometheusError(w, r, err)
+				return true
+			}
+			return true
+		}
+	}
+	if strings.HasPrefix(path, "/graphite/tags/") && !isGraphiteTagsPath(path[len("/graphite"):]) {
+		tagName := r.URL.Path[len("/graphite/tags/"):]
+		graphiteTagValuesRequests.Inc()
+		if err := graphite.TagValuesHandler(startTime, tagName, w, r); err != nil {
+			graphiteTagValuesErrors.Inc()
+			httpserver.Errorf(w, r, "error in %q: %s", r.URL.Path, err)
+			return true
+		}
+		return true
+	}
 	if strings.HasPrefix(path, "/tags/") && !isGraphiteTagsPath(path) {
 		tagName := r.URL.Path[len("/tags/"):]
 		graphiteTagValuesRequests.Inc()
@@ -144,7 +168,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 	}
 
 	switch path {
-	case "/api/v1/query":
+	case "/prometheus/api/v1/query", "/api/v1/query":
 		queryRequests.Inc()
 		httpserver.EnableCORS(w, r)
 		if err := prometheus.QueryHandler(startTime, w, r); err != nil {
@@ -153,7 +177,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/api/v1/query_range":
+	case "/prometheus/api/v1/query_range", "/api/v1/query_range":
 		queryRangeRequests.Inc()
 		httpserver.EnableCORS(w, r)
 		if err := prometheus.QueryRangeHandler(startTime, w, r); err != nil {
@@ -162,7 +186,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/api/v1/series":
+	case "/prometheus/api/v1/series", "/api/v1/series":
 		seriesRequests.Inc()
 		httpserver.EnableCORS(w, r)
 		if err := prometheus.SeriesHandler(startTime, w, r); err != nil {
@@ -171,7 +195,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/api/v1/series/count":
+	case "/prometheus/api/v1/series/count", "/api/v1/series/count":
 		seriesCountRequests.Inc()
 		httpserver.EnableCORS(w, r)
 		if err := prometheus.SeriesCountHandler(startTime, w, r); err != nil {
@@ -180,7 +204,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/api/v1/labels":
+	case "/prometheus/api/v1/labels", "/api/v1/labels":
 		labelsRequests.Inc()
 		httpserver.EnableCORS(w, r)
 		if err := prometheus.LabelsHandler(startTime, w, r); err != nil {
@@ -189,7 +213,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/api/v1/labels/count":
+	case "/prometheus/api/v1/labels/count", "/api/v1/labels/count":
 		labelsCountRequests.Inc()
 		httpserver.EnableCORS(w, r)
 		if err := prometheus.LabelsCountHandler(startTime, w, r); err != nil {
@@ -198,7 +222,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/api/v1/status/tsdb":
+	case "/prometheus/api/v1/status/tsdb", "/api/v1/status/tsdb":
 		statusTSDBRequests.Inc()
 		if err := prometheus.TSDBStatusHandler(startTime, w, r); err != nil {
 			statusTSDBErrors.Inc()
@@ -206,11 +230,11 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/api/v1/status/active_queries":
+	case "/prometheus/api/v1/status/active_queries", "/api/v1/status/active_queries":
 		statusActiveQueriesRequests.Inc()
 		promql.WriteActiveQueries(w)
 		return true
-	case "/api/v1/status/top_queries":
+	case "/prometheus/api/v1/status/top_queries", "/api/v1/status/top_queries":
 		topQueriesRequests.Inc()
 		if err := prometheus.QueryStatsHandler(startTime, w, r); err != nil {
 			topQueriesErrors.Inc()
@@ -218,7 +242,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/api/v1/export":
+	case "/prometheus/api/v1/export", "/api/v1/export":
 		exportRequests.Inc()
 		if err := prometheus.ExportHandler(startTime, w, r); err != nil {
 			exportErrors.Inc()
@@ -226,7 +250,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/api/v1/export/csv":
+	case "/prometheus/api/v1/export/csv", "/api/v1/export/csv":
 		exportCSVRequests.Inc()
 		if err := prometheus.ExportCSVHandler(startTime, w, r); err != nil {
 			exportCSVErrors.Inc()
@@ -234,7 +258,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/api/v1/export/native":
+	case "/prometheus/api/v1/export/native", "/api/v1/export/native":
 		exportNativeRequests.Inc()
 		if err := prometheus.ExportNativeHandler(startTime, w, r); err != nil {
 			exportNativeErrors.Inc()
@@ -242,7 +266,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/federate":
+	case "/prometheus/federate", "/federate":
 		federateRequests.Inc()
 		if err := prometheus.FederateHandler(startTime, w, r); err != nil {
 			federateErrors.Inc()
@@ -250,7 +274,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/metrics/find", "/metrics/find/":
+	case "/graphite/metrics/find", "/graphite/metrics/find/", "/metrics/find", "/metrics/find/":
 		graphiteMetricsFindRequests.Inc()
 		httpserver.EnableCORS(w, r)
 		if err := graphite.MetricsFindHandler(startTime, w, r); err != nil {
@@ -259,7 +283,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/metrics/expand", "/metrics/expand/":
+	case "/graphite/metrics/expand", "/graphite/metrics/expand/", "/metrics/expand", "/metrics/expand/":
 		graphiteMetricsExpandRequests.Inc()
 		httpserver.EnableCORS(w, r)
 		if err := graphite.MetricsExpandHandler(startTime, w, r); err != nil {
@@ -268,7 +292,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/metrics/index.json", "/metrics/index.json/":
+	case "/graphite/metrics/index.json", "/graphite/metrics/index.json/", "/metrics/index.json", "/metrics/index.json/":
 		graphiteMetricsIndexRequests.Inc()
 		httpserver.EnableCORS(w, r)
 		if err := graphite.MetricsIndexHandler(startTime, w, r); err != nil {
@@ -277,7 +301,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/tags/tagSeries":
+	case "/graphite/tags/tagSeries", "/tags/tagSeries":
 		graphiteTagsTagSeriesRequests.Inc()
 		if err := graphite.TagsTagSeriesHandler(startTime, w, r); err != nil {
 			graphiteTagsTagSeriesErrors.Inc()
@@ -285,7 +309,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/tags/tagMultiSeries":
+	case "/graphite/tags/tagMultiSeries", "/tags/tagMultiSeries":
 		graphiteTagsTagMultiSeriesRequests.Inc()
 		if err := graphite.TagsTagMultiSeriesHandler(startTime, w, r); err != nil {
 			graphiteTagsTagMultiSeriesErrors.Inc()
@@ -293,7 +317,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/tags":
+	case "/graphite/tags", "/tags":
 		graphiteTagsRequests.Inc()
 		if err := graphite.TagsHandler(startTime, w, r); err != nil {
 			graphiteTagsErrors.Inc()
@@ -301,7 +325,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/tags/findSeries":
+	case "/graphite/tags/findSeries", "/tags/findSeries":
 		graphiteTagsFindSeriesRequests.Inc()
 		if err := graphite.TagsFindSeriesHandler(startTime, w, r); err != nil {
 			graphiteTagsFindSeriesErrors.Inc()
@@ -309,7 +333,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/tags/autoComplete/tags":
+	case "/graphite/tags/autoComplete/tags", "/tags/autoComplete/tags":
 		graphiteTagsAutoCompleteTagsRequests.Inc()
 		httpserver.EnableCORS(w, r)
 		if err := graphite.TagsAutoCompleteTagsHandler(startTime, w, r); err != nil {
@@ -318,7 +342,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/tags/autoComplete/values":
+	case "/graphite/tags/autoComplete/values", "/tags/autoComplete/values":
 		graphiteTagsAutoCompleteValuesRequests.Inc()
 		httpserver.EnableCORS(w, r)
 		if err := graphite.TagsAutoCompleteValuesHandler(startTime, w, r); err != nil {
@@ -327,7 +351,7 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/tags/delSeries":
+	case "/graphite/tags/delSeries", "/tags/delSeries":
 		graphiteTagsDelSeriesRequests.Inc()
 		authKey := r.FormValue("authKey")
 		if authKey != *deleteAuthKey {
@@ -340,25 +364,25 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 			return true
 		}
 		return true
-	case "/api/v1/rules":
+	case "/prometheus/api/v1/rules", "/api/v1/rules":
 		// Return dumb placeholder
 		rulesRequests.Inc()
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		fmt.Fprintf(w, "%s", `{"status":"success","data":{"groups":[]}}`)
 		return true
-	case "/api/v1/alerts":
+	case "/prometheus/api/v1/alerts", "/api/v1/alerts":
 		// Return dumb placehloder
 		alertsRequests.Inc()
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		fmt.Fprintf(w, "%s", `{"status":"success","data":{"alerts":[]}}`)
 		return true
-	case "/api/v1/metadata":
+	case "/prometheus/api/v1/metadata", "/api/v1/metadata":
 		// Return dumb placeholder
 		metadataRequests.Inc()
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
 		fmt.Fprintf(w, "%s", `{"status":"success","data":{}}`)
 		return true
-	case "/api/v1/admin/tsdb/delete_series":
+	case "/prometheus/api/v1/admin/tsdb/delete_series", "/api/v1/admin/tsdb/delete_series":
 		deleteRequests.Inc()
 		authKey := r.FormValue("authKey")
 		if authKey != *deleteAuthKey {
